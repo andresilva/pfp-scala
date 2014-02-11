@@ -130,3 +130,73 @@ object Shape {
     Trig[P].exp((-Fractional[P].one) / 2 * (u ** 2)) / (Trig[P].pi * 2).sqrt
   }
 }
+
+object Examples {
+  import Distribution._
+  import scalaz._
+  import Scalaz._
+
+  sealed abstract class Coin
+  case object Head extends Coin
+  case object Tail extends Coin
+  def coin = uniform[Coin, Double].apply(Seq(Head, Tail))
+  def biasedCoin(p: Double) = Distribution.choose[Coin, Double](Head, Tail)(p)
+  def d(n: Int) = uniform[Int, Double].apply(1 to n)
+  def die = d(6)
+  val dice: Distribution[Int, Double] = for {
+    d1 <- die
+    d2 <- die
+  } yield (d1 + d2)
+
+  sealed trait Outcome
+  case object Win extends Outcome
+  case object Lose extends Outcome
+
+  def firstChoice = uniform[Outcome, Rational].apply(Win :: Lose :: Lose :: Nil)
+
+  def switch(o: Outcome) = o match {
+    case Win => certainly[Outcome, Rational](Lose)
+    case Lose => certainly[Outcome, Rational](Win)
+  }
+
+  sealed trait Door
+  case object A extends Door
+  case object B extends Door
+  case object C extends Door
+
+  def doors = A :: B :: C :: Nil
+
+  case class State(prize: Door, chosen: Door, opened: Door)
+
+  def start = State(null, null, null)
+
+  def hide[P: Fractional]: Transition[State, P] =
+    s => uniform[State, P].apply(doors.map(d => s.copy(prize = d)))
+
+  def choose[P: Fractional]: Transition[State, P] =
+    s => uniform[State, P].apply(doors.map(d => s.copy(chosen = d)))
+
+  def open[P: Fractional]: Transition[State, P] =
+    s => uniform[State, P].apply(doors.diff(Seq(s.prize, s.chosen)).map(d => s.copy(opened = d)))
+
+  type Strategy[P] = Transition[State, P]
+
+  def switch[P: Fractional]: Strategy[P] =
+    s => uniform[State, P].apply(doors.diff(Seq(s.chosen, s.opened)).map(d => s.copy(chosen = d)))
+
+  def certainlyT[A, P: Numeric](f: A => A): Transition[A, P] =
+    a => certainly[A, P](f(a))
+
+  def stay[P: Numeric] = certainlyT[State, P](identity)
+
+  def game[P: Fractional: Numeric](s: Strategy[P]): Strategy[P] =
+    Distribution.compose[State, ({type λ[+α] = Distribution[α, P]})#λ](
+      hide[P] :: choose[P] :: open[P] :: s :: Nil)
+
+  def result(s: State) =
+    if (s.chosen == s.prize) Win
+    else Lose
+
+  def eval[P: Fractional: Numeric](s: Strategy[P]): Distribution[Outcome, P] =
+    game(s).apply(start).map(result)
+}
