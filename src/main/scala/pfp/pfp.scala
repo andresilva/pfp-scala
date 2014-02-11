@@ -1,6 +1,7 @@
 package pfp
 
-import scalaz.MonadPlus
+import scalaz.{ Kleisli, Monad, MonadPlus }
+import scalaz.Kleisli.kleisli
 import scalaz.syntax.monadPlus._
 import spire.algebra.Trig
 import spire.compat._
@@ -58,7 +59,9 @@ object Distribution {
   def shape[A, P: Fractional](f: P => P): Spread[A, P] = {
     case Nil => throw new IllegalArgumentException("empty list")
     case as =>
-      val incr = Fractional[P].one / (as.length - 1)
+      val incr =
+        if (as.length - 1 == 0) Fractional[P].zero
+        else Fractional[P].one / (as.length - 1)
       def ps = Stream.iterate(Fractional[P].zero)(_ + incr).map(f)
       fromFreqs(as.zip(ps): _*)
   }
@@ -67,6 +70,45 @@ object Distribution {
   def uniform[A, P: Fractional]: Spread[A, P] = shape(Shape.uniform)
   def negExp[A, P: Fractional: Trig]: Spread[A, P] = shape(Shape.negExp)
   def normal[A, P: Fractional: Trig]: Spread[A, P] = shape(Shape.normal)
+
+  def tf[P: Numeric](p: P) = choose(true, false)(p)
+  def bernoulli[P: Numeric](p: P) = choose(1, 0)(p)
+
+
+  def joinWith[A, B, C, P: Numeric](f: (A, B) => C)(
+    a: Distribution[A, P], b: Distribution[B, P]): Distribution[C, P] =
+    Distribution {
+      for {
+        (a, p) <- a.data
+        (b, q) <- b.data
+      } yield (f(a, b), p * q)
+    }
+  def prod[A, B, P: Numeric](a: Distribution[A, P], b: Distribution[B, P]) =
+    joinWith[A, B, (A, B), P]((a, b) => (a, b))(a, b)
+
+  def die[P: Fractional] = uniform[Int, P].apply(1 to 6)
+
+  def dice[P: Fractional](n: Int): Distribution[List[Int], P] = n match {
+    case 0 => certainly[List[Int], P](Nil)(util.frac2num)
+    case n => joinWith[Int, List[Int], List[Int], P](_ :: _)(die, dice(n -1))(util.frac2num)
+  }
+
+  def compose[A, M[+_]: Monad](aps: Seq[A => M[A]]): A => M[A] =
+    aps.map(kleisli[M, A, A]).foldLeft(Kleisli.ask[M, A])((a, b) => a >=> b)
+
+  def selectOne[A, P: Fractional](as: A*): Distribution[(A, Seq[A]), P] =
+    uniform[(A, Seq[A]), P].apply(as.map(a => (a, as.diff(List(a)))))
+
+  def selectMany[A, P: Fractional: Numeric](n: Int, as: A*): Distribution[(Seq[A], Seq[A]), P] = n match {
+    case 0 => Monad[({type λ[α] = Distribution[α, P]})#λ].point((Nil, as))
+    case n => for {
+      (x, c1) <- selectOne[A, P](as: _*)
+      (xs, c2) <- selectMany[A, P](n - 1, c1: _*)
+    } yield (x +: xs, c2)
+  }
+
+  def select[A, P: Fractional: Numeric](n: Int, as: A*): Distribution[Seq[A], P] =
+    selectMany[A, P](n, as: _*).map(_._1.reverse)
 
   private[this] def fromFreqs[A, P: Fractional](data: (A, P)*): Distribution[A, P] = {
     val q = data.map(_._2).sum
