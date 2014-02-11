@@ -1,6 +1,7 @@
 package pfp
 
-import scalaz.Monad
+import scalaz.MonadPlus
+import scalaz.syntax.monadPlus._
 import spire.algebra.Trig
 import spire.compat._
 import spire.math._
@@ -26,7 +27,11 @@ case class Distribution[A, P: Numeric](data: Stream[(A, P)]) extends Function[Ev
 }
 
 object Distribution {
-  implicit def distributionMonad[P: Numeric] = new Monad[({type λ[α] = Distribution[α, P]})#λ] {
+  implicit def distributionMonad[P: Numeric] = new MonadPlus[({type λ[α] = Distribution[α, P]})#λ] {
+    def plus[A](a: Distribution[A, P], b: => Distribution[A, P]): Distribution[A,P] = ???
+
+    def empty[A]: Distribution[A, P] = Distribution(Stream.empty[(A, P)])
+
     def point[A](a: => A) = certainly[A, P](a)
     def bind[A, B](fa: Distribution[A, P])(f: A => Distribution[B, P]) =
       Distribution {
@@ -38,6 +43,8 @@ object Distribution {
   }
 
   def certainly[A, P: Numeric](a: A) = Distribution[A, P](Stream(a -> Numeric[P].one))
+
+  def impossible[A, P: Numeric] = MonadPlus[({type λ[α] = Distribution[α, P]})#λ].empty[A]
 
   def choose[A, P: Numeric](a: A, b: A)(p: P) =
     Distribution(Stream(a -> p, b -> (1 - p)))
