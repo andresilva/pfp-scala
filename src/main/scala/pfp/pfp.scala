@@ -8,6 +8,9 @@ import spire.implicits._
 
 case class Distribution[A, P: Numeric](data: Stream[(A, P)]) extends Function[Event[A], P] {
   def apply(event: Event[A]) = data.filter(d => event(d._1)).map(_._2).sum
+
+  def normalized = data.groupBy(_._1).mapValues(_.map(_._2).sum).toStream
+
 }
 
 object Distribution {
