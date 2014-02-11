@@ -29,9 +29,13 @@ case class Distribution[A, P: Numeric](data: Stream[(A, P)]) extends Function[Ev
       val scale = Numeric[P].fromInt(100)
       val maxWidth = data.map(_._1.toString.length).max
       val fmt = "%" + maxWidth + "s %s %s"
-      data.foreach { case (b, p) =>
-        val hashes = (p * scale).toInt
-        println(fmt.format(b.toString, p.toString, "#" * hashes))
+      data.foreach {
+        case (b, p: Double) =>
+          val hashes = (p * scale.toDouble()).toInt
+          println(fmt.format(b.toString, f"$p%.2f", "#" * hashes))
+        case (b, p) =>
+          val hashes = (p * scale).toInt
+          println(fmt.format(b.toString, p.toString(), "#" * hashes))
       }
     }
 }
