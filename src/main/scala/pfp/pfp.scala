@@ -11,12 +11,21 @@ import spire.implicits._
 case class Distribution[A, P: Numeric](data: Stream[(A, P)]) extends Function[Event[A], P] {
   def apply(event: Event[A]) = data.filter(d => event(d._1)).map(_._2).sum
 
-  def normalized = data.groupBy(_._1).mapValues(_.map(_._2).sum).toStream
+  def scale(f: (A, P) => P): Distribution[A, P] = Distribution { data.map { case (k, v) => (k, f(k, v)) } }.normalize
+
+  def unify = data.groupBy(_._1).mapValues(_.map(_._2).sum).toStream
+
+  def samples: Stream[A] = ???
+
+  def normalize = Distribution {
+    val sum = data.map(_._2).sum
+    data.map { case (k, v) => (k, v / sum) }
+  }
 
   def plot(implicit ord: Ordering[A] = null) =
     if (data.isEmpty) println("impossible")
     else {
-      val data = if (ord == null) normalized else normalized.sortBy(_._1)
+      val data = if (ord == null) unify else unify.sortBy(_._1)
       val scale = Numeric[P].fromInt(100)
       val maxWidth = data.map(_._1.toString.length).max
       val fmt = "%" + maxWidth + "s %s %s"
@@ -39,7 +48,7 @@ object Distribution {
         for {
           (a, p) <- fa.data
           (b, q) <- f(a).data
-        } yield ((b, p * q))
+        } yield (b, p * q)
       }
   }
 
@@ -51,7 +60,7 @@ object Distribution {
     Distribution(Stream(a -> p, b -> (1 - p)))
 
   def enum[A, P: Fractional](is: Int*): Spread[A, P] =
-    as => fromFreqs(as.zip(is.map(Fractional[P].fromInt(_))): _*)
+    as => fromFreqs(as.zip(is.map(Fractional[P].fromInt)): _*)
 
   def relative[A, P: Fractional](ns: P*): Spread[A, P] =
     as => fromFreqs(as.zip(ns): _*)
@@ -74,7 +83,6 @@ object Distribution {
   def tf[P: Numeric](p: P) = choose(true, false)(p)
   def bernoulli[P: Numeric](p: P) = choose(1, 0)(p)
 
-
   def joinWith[A, B, C, P: Numeric](f: (A, B) => C)(
     a: Distribution[A, P], b: Distribution[B, P]): Distribution[C, P] =
     Distribution {
@@ -83,6 +91,7 @@ object Distribution {
         (b, q) <- b.data
       } yield (f(a, b), p * q)
     }
+
   def prod[A, B, P: Numeric](a: Distribution[A, P], b: Distribution[B, P]) =
     joinWith[A, B, (A, B), P]((a, b) => (a, b))(a, b)
 
