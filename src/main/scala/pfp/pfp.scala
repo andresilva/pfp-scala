@@ -11,6 +11,18 @@ case class Distribution[A, P: Numeric](data: Stream[(A, P)]) extends Function[Ev
 
   def normalized = data.groupBy(_._1).mapValues(_.map(_._2).sum).toStream
 
+  def plot(implicit ord: Ordering[A] = null) =
+    if (data.isEmpty) println("impossible")
+    else {
+      val data = if (ord == null) normalized else normalized.sortBy(_._1)
+      val scale = Numeric[P].fromInt(100)
+      val maxWidth = data.map(_._1.toString.length).max
+      val fmt = "%" + maxWidth + "s %s %s"
+      data.foreach { case (b, p) =>
+        val hashes = (p * scale).toInt
+        println(fmt.format(b.toString, p.toString, "#" * hashes))
+      }
+    }
 }
 
 object Distribution {
