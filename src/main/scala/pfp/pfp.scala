@@ -17,8 +17,6 @@ case class Distribution[A, P: Numeric](data: Stream[(A, P)]) extends Function[Ev
 
   def unify = data.groupBy(_._1).mapValues(_.map(_._2).sum).toStream
 
-  def samples: Stream[A] = ???
-
   def normalize = Distribution {
     val sum = data.map(_._2).sum
     data.map { case (k, v) => (k, v / sum) }
