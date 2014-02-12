@@ -43,9 +43,9 @@ case class Distribution[A, P: Numeric](data: Stream[(A, P)]) extends Function[Ev
             alias(remainder :: ss, ll, newRest)
           else
             alias(ss, remainder :: ll, newRest)
-        case (_, (l, pl) :: ll) =>
+        case (_, (l, _) :: ll) =>
           alias(small, ll, (l, Numeric[P].fromDouble(1.0), None) :: rest)
-        case ((s, ps) :: ss, _) =>
+        case ((s, _) :: ss, _) =>
           alias(ss, large, (s, Numeric[P].fromDouble(1.0), None) :: rest)
         case _ =>
           rest
