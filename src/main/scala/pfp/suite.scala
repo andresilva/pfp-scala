@@ -3,6 +3,7 @@ package pfp
 abstract class Suite[H, D](var d: Distribution[H, Double]) {
   def likelihood(data: D, hypo: H): Double
   def update(data: D) { d = d.scale { case (h, prob) => prob * likelihood(data, h) } }
+  //   def update(data: D) { d = d.flatMap(_ => Distribution[H, Double] { d.data.map { case (k, _) => (k, likelihood(data, k)) } }) }
 
   def plot() = d.plot
 }

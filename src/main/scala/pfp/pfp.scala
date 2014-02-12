@@ -10,23 +10,23 @@ import spire.implicits._
 import spire.math._
 import spire.random.Uniform._
 
-case class Distribution[A, P: Numeric](data: Stream[(A, P)]) extends Function[Event[A], P] {
+case class Distribution[A, P: Numeric](data: Map[A, P]) extends Function[Event[A], P] {
   def apply(event: Event[A]) = data.filter(d => event(d._1)).map(_._2).sum
 
   def scale(f: (A, P) => P): Distribution[A, P] = Distribution { data.map { case (k, v) => (k, f(k, v)) } }.normalize
 
-  def unify = data.groupBy(_._1).mapValues(_.map(_._2).sum).toStream
+  def unify = data.groupBy(_._1).mapValues(_.values.sum).toStream
 
   def normalize = Distribution {
-    val sum = data.map(_._2).sum
-    data.map { case (k, v) => (k, v / sum) }
+    val sum = data.values.sum
+    data.mapValues { _ / sum }
   }
 
   def samples: Stream[A] = {
     val len = Numeric[P].fromInt(data.size)
-    val scale = len / data.map(_._2).sum
-    val scaled = data.toList.map({ case (k, v) => k -> (v * scale) })
-    val (small, large) = scaled.partition(_._2 < 1.0)
+    val scale = len / data.values.sum
+    val scaled = data.mapValues(_ * scale).toList
+    val (small, large) = scaled.partition { _._2 < 1.0 }
 
     @tailrec
     def alias(
@@ -89,7 +89,7 @@ object Distribution {
   implicit def distributionMonad[P: Numeric] = new MonadPlus[({type λ[α] = Distribution[α, P]})#λ] {
     def plus[A](a: Distribution[A, P], b: => Distribution[A, P]): Distribution[A,P] = ???
 
-    def empty[A]: Distribution[A, P] = Distribution(Stream.empty[(A, P)])
+    def empty[A]: Distribution[A, P] = Distribution(Map.empty[A, P])
 
     def point[A](a: => A) = certainly[A, P](a)
     def bind[A, B](fa: Distribution[A, P])(f: A => Distribution[B, P]) =
@@ -101,12 +101,12 @@ object Distribution {
       }
   }
 
-  def certainly[A, P: Numeric](a: A) = Distribution[A, P](Stream(a -> Numeric[P].one))
+  def certainly[A, P: Numeric](a: A) = Distribution[A, P](Map(a -> Numeric[P].one))
 
   def impossible[A, P: Numeric] = MonadPlus[({type λ[α] = Distribution[α, P]})#λ].empty[A]
 
   def choose[A, P: Numeric](a: A, b: A)(p: P) =
-    Distribution(Stream(a -> p, b -> (1 - p)))
+    Distribution(Map(a -> p, b -> (1 - p)))
 
   def enum[A, P: Fractional](is: Int*): Spread[A, P] =
     as => fromFreqs(as.zip(is.map(Fractional[P].fromInt)): _*)
@@ -148,7 +148,7 @@ object Distribution {
 
   def dice[P: Fractional](n: Int): Distribution[List[Int], P] = n match {
     case 0 => certainly[List[Int], P](Nil)(util.frac2num)
-    case n => joinWith[Int, List[Int], List[Int], P](_ :: _)(die, dice(n -1))(util.frac2num)
+    case n => joinWith[Int, List[Int], List[Int], P](_ :: _)(die, dice(n - 1))(util.frac2num)
   }
 
   def compose[A, M[+_]: Monad](aps: Seq[A => M[A]]): A => M[A] =
@@ -169,8 +169,9 @@ object Distribution {
     selectMany[A, P](n, as: _*).map(_._1.reverse)
 
   private[this] def fromFreqs[A, P: Fractional](data: (A, P)*): Distribution[A, P] = {
-    val q = data.map(_._2).sum
-    Distribution(data.map { case (a, p) => (a, p / q) }.toStream)(util.frac2num)
+    val map = data.toMap
+    val q = map.values.sum
+    Distribution(map.mapValues(_ / q))(util.frac2num)
   }
 }
 
