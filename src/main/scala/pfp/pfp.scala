@@ -1,12 +1,14 @@
 package pfp
 
+import scala.annotation.tailrec
 import scalaz.{ Kleisli, Monad, MonadPlus }
 import scalaz.Kleisli.kleisli
 import scalaz.syntax.monadPlus._
 import spire.algebra.Trig
 import spire.compat._
-import spire.math._
 import spire.implicits._
+import spire.math._
+import spire.random.Uniform._
 
 case class Distribution[A, P: Numeric](data: Stream[(A, P)]) extends Function[Event[A], P] {
   def apply(event: Event[A]) = data.filter(d => event(d._1)).map(_._2).sum
@@ -15,11 +17,54 @@ case class Distribution[A, P: Numeric](data: Stream[(A, P)]) extends Function[Ev
 
   def unify = data.groupBy(_._1).mapValues(_.map(_._2).sum).toStream
 
-  def samples: Stream[A] = ???
-
   def normalize = Distribution {
     val sum = data.map(_._2).sum
     data.map { case (k, v) => (k, v / sum) }
+  }
+
+  def samples: Stream[A] = {
+    val len = Numeric[P].fromInt(data.size)
+    val scale = len / data.map(_._2).sum
+    val scaled = data.toList.map({ case (k, v) => k -> (v * scale) })
+    val (small, large) = scaled.partition(_._2 < 1.0)
+
+    @tailrec
+    def alias(
+      small: List[(A, P)],
+      large: List[(A, P)],
+      rest: List[(A, P, Option[A])]): List[(A, P, Option[A])] = {
+      (small, large) match {
+        case ((s, ps) :: ss, (l, pl) :: ll) =>
+          val remainder = (l, pl - (Numeric[P].fromDouble(1.0) - ps))
+          val newRest = (s, ps, Some(l)) :: rest
+          if (remainder._2 < 1)
+            alias(remainder :: ss, ll, newRest)
+          else
+            alias(ss, remainder :: ll, newRest)
+        case (_, (l, _) :: ll) =>
+          alias(small, ll, (l, Numeric[P].fromDouble(1.0), None) :: rest)
+        case ((s, _) :: ss, _) =>
+          alias(ss, large, (s, Numeric[P].fromDouble(1.0), None) :: rest)
+        case _ =>
+          rest
+      }
+    }
+
+    val table = Vector() ++ alias(small, large, Nil)
+    def select(p1: P, p2: P, table: Vector[(A, P, Option[A])]): A = {
+      table((p1 * len).toInt) match {
+        case (a, _, None) => a
+        case (a, p, Some(b)) => if (p2 <= p) a else b
+      }
+    }
+
+    val rnd = UniformDouble(0.0, 1.0)
+
+    Stream.continually(
+      select(
+        Numeric[P].fromDouble(rnd.get),
+        Numeric[P].fromDouble(rnd.get),
+        table))
   }
 
   def plot(implicit ord: Ordering[A] = null) =
