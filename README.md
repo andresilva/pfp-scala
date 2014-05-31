@@ -3,7 +3,7 @@ pfp-scala
 
 Probabilistic Functional Programming in Scala.
 
-Here's an example modeling the Monty Hall problem:
+Here's an example modeling the [Monty Hall problem](http://en.wikipedia.org/wiki/Monty_Hall_problem):
 
 ```scala
 sealed trait Outcome
